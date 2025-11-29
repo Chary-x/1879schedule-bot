@@ -51,4 +51,13 @@ def save_data():
     except Exception as e:
         logger.error(f"Error saving data to JSON file: {e}")
 
+def standardise_event_name(input_name: str) -> str:
+    cleaned_input = input_name.replace(' ', '').replace('_', '').lower()
+    
+    for key in event_data.keys():
+        cleaned_key = key.replace(' ', '').lower()
+        if cleaned_input == cleaned_key:
+            return key
+    return input_name
+
 load_data()

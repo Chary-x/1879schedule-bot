@@ -4,7 +4,7 @@ from discord import app_commands
 from datetime import datetime, timedelta
 import logging
 
-from utils import event_data, load_data, save_data, EVENT_PARAMS
+from utils import event_data, load_data, save_data, EVENT_PARAMS, standardise_event_name
 
 logger = logging.getLogger('discord')
 
@@ -38,7 +38,7 @@ class ScheduleCog(commands.Cog):
             
             reminders = [
                 (timedelta(hours=8), '8 hours'),
-                (timedelta(hour=1), '1 hour')
+                (timedelta(hours=1), '1 hour')
             ]
 
             for time_delta, reminder_text in reminders:
@@ -86,17 +86,17 @@ class ScheduleCog(commands.Cog):
 
     @app_commands.command(name="setevent", description="Schedule the initial time, channel, and role for event reminders.")
     @app_commands.describe(
-        event_name="Ancient Ruins or Altar of Darkness",
+        event_name="Ancient Ruins or Altar of Darkness (Enter name exactly)",
         time_str="Event opening time (Format: YYYY-MM-DDTHH:MM, e.g., 2025-12-05T20:00)",
         role="The role to ping for reminders"
     )
     @app_commands.checks.has_permissions(administrator=True)
     async def setevent_slash(self, interaction: discord.Interaction, event_name: str, time_str: str, role: discord.Role):
         
-        event_name = event_name.replace('_', ' ').title() 
+        standard_name = standardise_event_name(event_name)
         
-        if event_name not in event_data:
-            valid_events = " or ".join([f"`{e.replace(' ', '_')}`" for e in event_data.keys()])
+        if standard_name not in event_data:
+            valid_events = " or ".join([f"`{key}`" for key in event_data.keys()])
             await interaction.response.send_message(f"❌ Unknown event: `{event_name}`. Please use {valid_events}.", ephemeral=True)
             return
 
@@ -109,23 +109,23 @@ class ScheduleCog(commands.Cog):
             await interaction.response.send_message("❌ Invalid time format. Use **YYYY-MM-DDTHH:MM** (e.g., `2025-12-05T20:00`).", ephemeral=True)
             return
         
-        data = event_data[event_name]
-        data['next_time_iso'] = next_time_dt.isoformat() 
+        data = event_data[standard_name]
+        data['next_time_iso'] = next_time_dt.isoformat()
         data['role_id'] = role.id
         data['channel_id'] = interaction.channel_id
-        data['reminders_sent'] = [] 
+        data['reminders_sent'] = []
         
         save_data()
 
-        interval_hours = EVENT_PARAMS[event_name]['interval'].total_seconds() / 3600
+        interval_hours = EVENT_PARAMS[standard_name]['interval'].total_seconds() / 3600
 
         await interaction.response.send_message(
-            f"✅ **{event_name}** is now scheduled for **{next_time_dt.strftime('%Y-%m-%d %H:%M UTC')}** "
+            f"✅ **{standard_name}** is now scheduled for **{next_time_dt.strftime('%Y-%m-%d %H:%M UTC')}** "
             f"in this channel, tagging {role.mention}.\n"
-            f"Reminders will be sent 1hr, 30m, and 15m prior. This event is set to repeat every **{interval_hours:.0f} hours**.",
+            f"Reminders will be sent **8 hours and 1 hour** prior. This event is set to repeat every **{interval_hours:.0f} hours**.",
             ephemeral=False
         )
-        logger.info(f"Event {event_name} set by {interaction.user} for {next_time_dt.isoformat()}")
+        logger.info(f"Event {standard_name} set by {interaction.user} for {next_time_dt.isoformat()}")
 
     @app_commands.command(name="checkevents", description="Displays the next scheduled time for all events.")
     async def checkevents_slash(self, interaction: discord.Interaction):
@@ -174,3 +174,110 @@ class ScheduleCog(commands.Cog):
                  embed.add_field(name=f"🌟 {event_name}", value="Not yet scheduled.", inline=False)
 
         await interaction.followup.send(embed=embed)
+
+    @app_commands.command(name="rescheduleevent", description="Change the time of an already scheduled event.")
+    @app_commands.describe(
+        event_name="Ancient Ruins or Altar of Darkness (Enter name exactly)",
+        time_str="New event opening time (Format: YYYY-MM-DDTHH:MM, e.g., 2025-12-05T20:00)"
+    )
+    @app_commands.checks.has_permissions(administrator=True)
+    async def rescheduleevent_slash(self, interaction: discord.Interaction, event_name: str, time_str: str):
+        
+        standard_name = standardise_event_name(event_name)
+        
+        if standard_name not in event_data:
+            await interaction.response.send_message(f"❌ Unknown event: `{event_name}`.", ephemeral=True)
+            return
+
+        data = event_data[standard_name]
+        if data['next_time_iso'] is None:
+             await interaction.response.send_message(f"❌ **{standard_name}** is not currently scheduled. Use `/setevent` first.", ephemeral=True)
+             return
+
+        try:
+            new_time_dt = datetime.fromisoformat(time_str)
+            if new_time_dt < datetime.now():
+                await interaction.response.send_message("❌ The new time specified is in the past. Please enter a future time.", ephemeral=True)
+                return
+        except ValueError:
+            await interaction.response.send_message("❌ Invalid time format. Use **YYYY-MM-DDTHH:MM**.", ephemeral=True)
+            return
+        
+        old_time_str = data['next_time_iso']
+        data['next_time_iso'] = new_time_dt.isoformat()
+        data['reminders_sent'] = []
+        
+        save_data()
+
+        await interaction.response.send_message(
+            f"🔄 **{standard_name}** has been rescheduled.\n"
+            f"**Old Time:** `{old_time_str}`\n"
+            f"**New Time:** **{new_time_dt.strftime('%Y-%m-%d %H:%M UTC')}**\n"
+            f"Reminders will be sent **8 hours and 1 hour** before the new time.",
+            ephemeral=False
+        )
+        logger.info(f"Event {standard_name} rescheduled by {interaction.user} to {new_time_dt.isoformat()}")
+
+    @app_commands.command(name="cancelevent", description="Completely remove a scheduled event, stopping all reminders and auto-scheduling.")
+    @app_commands.describe(
+        event_name="Ancient Ruins or Altar of Darkness (Enter name exactly)"
+    )
+    @app_commands.checks.has_permissions(administrator=True)
+    async def cancelevent_slash(self, interaction: discord.Interaction, event_name: str):
+        
+        standard_name = standardise_event_name(event_name)
+        
+        if standard_name not in event_data:
+            await interaction.response.send_message(f"❌ Unknown event: `{event_name}`.", ephemeral=True)
+            return
+
+        event_data[standard_name]['next_time_iso'] = None
+        event_data[standard_name]['role_id'] = None
+        event_data[standard_name]['channel_id'] = None
+        event_data[standard_name]['reminders_sent'] = []
+        
+        save_data()
+
+        await interaction.response.send_message(
+            f"🛑 **{standard_name}** has been completely **CANCELED**.\n"
+            f"All future reminders and auto-scheduling for this event have stopped.",
+            ephemeral=False
+        )
+        logger.info(f"Event {standard_name} canceled by {interaction.user}.")
+
+    @app_commands.command(name="help", description="Shows a list of all bot commands and their usage.")
+    async def help_slash(self, interaction: discord.Interaction):
+        await interaction.response.defer(ephemeral=True)
+
+        embed = discord.Embed(
+            title="Bot Commands", 
+            description="Use the `/` prefix to see command options directly in Discord.", 
+            color=discord.Color.gold()
+        )
+
+        for command in self.bot.tree.get_commands():
+            
+            if command.cog_name != self.__cog_name__:
+                 continue
+            
+            name = f"/{command.name}"
+            description = command.description or "No description provided."
+            
+            args_list = []
+            for param in command.parameters:
+                arg_desc = f" ({param.description})" if param.description else ""
+                args_list.append(f"<{param.name}:{param.type.name.upper()}>{arg_desc}")
+
+            usage = f"`{name} {' '.join(args_list)}`"
+
+            perms_needed = ""
+            if command.name in ["setevent", "rescheduleevent", "cancelevent"]:
+                perms_needed = " (Requires: Administrator)"
+
+            embed.add_field(
+                name=f"{name}{perms_needed}",
+                value=f"{description}\nUsage: {usage}",
+                inline=False
+            )
+
+        await interaction.followup.send(embed=embed, ephemeral=True)
