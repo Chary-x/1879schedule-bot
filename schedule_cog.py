@@ -87,7 +87,7 @@ class ScheduleCog(commands.Cog):
 
     @app_commands.command(name="setevent", description="Schedule the initial time, channel, and role for event reminders.")
     @app_commands.describe(
-        event_name="Ancient_Ruins or Altar_of_Darkness",
+        event_name="Ancient Ruins or Altar of Darkness",
         time_str="Event opening time (Format: YYYY-MM-DDTHH:MM, e.g., 2025-12-05T20:00)",
         role="The role to ping for reminders"
     )
