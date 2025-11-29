@@ -1,0 +1,14 @@
+{
+    "Ancient Ruins": {
+        "next_time_iso": "2025-12-05T20:00:00",
+        "role_id": 1444352083707822082,
+        "channel_id": 1444352084937019605,
+        "reminders_sent": []
+    },
+    "Altar of Darkness": {
+        "next_time_iso": null,
+        "role_id": null,
+        "channel_id": null,
+        "reminders_sent": []
+    }
+}
