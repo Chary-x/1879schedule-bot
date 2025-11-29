@@ -2,3 +2,4 @@
 .env
 __pycache__
 discord.log
+event_data.json

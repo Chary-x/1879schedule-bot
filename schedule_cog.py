@@ -37,9 +37,8 @@ class ScheduleCog(commands.Cog):
             now = datetime.now()
             
             reminders = [
-                (timedelta(hours=1), '1 hour'),
-                (timedelta(minutes=30), '30 minutes'),
-                (timedelta(minutes=15), '15 minutes')
+                (timedelta(hours=8), '8 hours'),
+                (timedelta(hour=1), '1 hour')
             ]
 
             for time_delta, reminder_text in reminders:
