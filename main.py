@@ -35,8 +35,8 @@ class BotClient(commands.Bot):
 
     async def on_ready(self):
         print(f'Logged in as {self.user} (ID: {self.user.id})')
-        
-        await self.add_cog(ScheduleCog(self))
+        if self.get_cog("ScheduleCog") is None:
+            await self.add_cog(ScheduleCog(self))
         
         try:
             synced = await self.tree.sync()
